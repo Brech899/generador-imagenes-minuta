@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Generador de Menú Diario</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --cream:#FBF3E4;
+    --charcoal:#26241F;
+    --teal:#1F5952;
+    --tomato:#D64933;
+    --mustard:#E8A93A;
+    --plum:#7A4B8C;
+    --sky:#3E7CB1;
+    --line: rgba(38,36,31,0.14);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--cream);
+    color:var(--charcoal);
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    padding:28px 20px 80px;
+  }
+  .wrap{max-width:960px;margin:0 auto;}
+  header{margin-bottom:28px;}
+  .eyebrow{
+    font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--tomato);font-weight:700;margin-bottom:6px;
+  }
+  h1{
+    font-size:clamp(28px,4vw,40px);
+    margin:0 0 8px;
+    font-weight:800;
+    letter-spacing:-0.01em;
+  }
+  p.sub{margin:0;color:rgba(38,36,31,0.65);font-size:15px;max-width:560px;}
+
+  .card{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:22px;
+    margin-bottom:22px;
+  }
+  .card h2{
+    font-size:13px;text-transform:uppercase;letter-spacing:.1em;
+    margin:0 0 16px;color:var(--teal);font-weight:800;
+  }
+  .card h2 .n{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:20px;height:20px;border-radius:50%;background:var(--teal);
+    color:#fff;font-size:11px;margin-right:8px;
+  }
+
+  .drop{
+    border:2px dashed var(--line);
+    border-radius:12px;
+    padding:28px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.drag{border-color:var(--tomato); background: rgba(214,73,51,0.04);}
+  .drop input{display:none;}
+  .drop .icon{font-size:28px;display:block;margin-bottom:6px;}
+  .drop .txt{font-size:14px;color:rgba(38,36,31,0.7);}
+  .drop .txt b{color:var(--charcoal);}
+
+  .status{font-size:13px;margin-top:10px;color:rgba(38,36,31,0.6);}
+  .status.ok{color:var(--teal);font-weight:600;}
+  .status.err{color:var(--tomato);font-weight:600;}
+
+  .settings-row{display:flex;gap:14px;flex-wrap:wrap;margin-top:2px;}
+  .field{flex:1;min-width:200px;}
+  .field label{display:block;font-size:12px;font-weight:700;margin-bottom:5px;color:rgba(38,36,31,0.7);}
+  .field input{
+    width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--line);
+    font-size:14px;font-family:inherit;background:var(--cream);
+  }
+  .field input:focus{outline:2px solid var(--sky);outline-offset:1px;}
+
+  table.days{width:100%;border-collapse:collapse;margin-top:6px;}
+  table.days th{
+    text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+    color:rgba(38,36,31,0.5);padding:6px 8px;border-bottom:1px solid var(--line);
+  }
+  table.days td{padding:7px 8px;vertical-align:top;border-bottom:1px solid var(--line);}
+  table.days input, table.days textarea{
+    width:100%;border:1px solid var(--line);border-radius:7px;padding:7px 9px;
+    font-family:inherit;font-size:13px;background:var(--cream);resize:vertical;
+  }
+  table.days input:focus, table.days textarea:focus{outline:2px solid var(--sky);outline-offset:1px;}
+  .day-col{width:110px;}
+  .date-col{width:110px;}
+  .rm-col{width:34px;text-align:center;}
+  .rm-btn{
+    border:none;background:none;color:rgba(38,36,31,0.35);cursor:pointer;font-size:16px;
+    line-height:1;padding:4px;
+  }
+  .rm-btn:hover{color:var(--tomato);}
+
+  .row-actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+
+  button.btn{
+    border:none;border-radius:9px;padding:10px 16px;font-size:13px;font-weight:700;
+    cursor:pointer;font-family:inherit;letter-spacing:.01em;
+  }
+  .btn-ghost{background:var(--cream);color:var(--charcoal);border:1px solid var(--line);}
+  .btn-ghost:hover{border-color:var(--teal);}
+  .btn-primary{background:var(--teal);color:#fff;}
+  .btn-primary:hover{background:#183f3a;}
+  .btn-accent{background:var(--tomato);color:#fff;}
+  .btn-accent:hover{background:#b93a28;}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+
+  .gen-controls{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;}
+  .gen-controls select{
+    padding:9px 11px;border-radius:8px;border:1px solid var(--line);font-family:inherit;
+    font-size:14px;background:var(--cream);min-width:200px;
+  }
+
+  .preview-area{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;margin-top:18px;}
+  canvas#mainPreview{
+    width:320px;height:320px;border-radius:14px;border:1px solid var(--line);
+    box-shadow:0 6px 22px rgba(38,36,31,0.10);
+  }
+  .thumb-grid{display:flex;flex-wrap:wrap;gap:10px;flex:1;}
+  .thumb{
+    width:84px;height:84px;border-radius:10px;overflow:hidden;border:1px solid var(--line);
+    cursor:pointer;position:relative;
+  }
+  .thumb canvas{width:100%;height:100%;display:block;}
+  .thumb.empty{display:flex;align-items:center;justify-content:center;background:var(--cream);
+    color:rgba(38,36,31,0.35);font-size:11px;text-align:center;padding:6px;cursor:default;}
+
+  .hidden{display:none !important;}
+  .help{font-size:12px;color:rgba(38,36,31,0.55);margin-top:10px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Comedor escolar · JUNAEB</div>
+    <h1>Generador de menú del día</h1>
+    <p class="sub">Sube el PDF con la minuta del mes, revisa el texto extraído y genera las imágenes listas para publicar en Instagram, día por día o todas juntas.</p>
+  </header>
+
+  <div class="card">
+    <h2><span class="n">1</span>Sube el PDF de la minuta mensual</h2>
+    <div class="drop" id="dropZone">
+      <input type="file" id="fileInput" accept="application/pdf">
+      <span class="icon">📄</span>
+      <span class="txt"><b>Haz clic para elegir el PDF</b> o arrástralo aquí</span>
+    </div>
+    <div class="status" id="uploadStatus"></div>
+  </div>
+
+  <div class="card hidden" id="settingsCard">
+    <h2><span class="n">2</span>Datos para el pie de la imagen</h2>
+    <div class="settings-row">
+      <div class="field">
+        <label>Nombre del colegio</label>
+        <input type="text" id="schoolName" value="Nombre del colegio" placeholder="Nombre del colegio">
+      </div>
+      <div class="field">
+        <label>Cuenta de Instagram</label>
+        <input type="text" id="igHandle" value="@colegio" placeholder="@usuario">
+      </div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="tableCard">
+    <h2><span class="n">3</span>Revisa y corrige el menú de cada día</h2>
+    <p class="help">Extraje automáticamente el <b>desayuno</b> y el <b>almuerzo</b> de cada día — revisa que estén correctos antes de generar las imágenes. Puedes editar cualquier campo, borrar filas o agregar días que falten.</p>
+    <table class="days" id="daysTable">
+      <thead>
+        <tr>
+          <th class="day-col">Día</th>
+          <th class="date-col">Fecha</th>
+          <th>Desayuno (un ítem por línea)</th>
+          <th>Almuerzo (un ítem por línea)</th>
+          <th class="rm-col"></th>
+        </tr>
+      </thead>
+      <tbody id="daysBody"></tbody>
+    </table>
+    <div class="row-actions">
+      <button class="btn btn-ghost" id="addRowBtn">+ Agregar día</button>
+    </div>
+  </div>
+
+  <div class="card hidden" id="genCard">
+    <h2><span class="n">4</span>Genera las imágenes</h2>
+    <div class="gen-controls">
+      <div class="field" style="max-width:260px;">
+        <label>Elegir un día específico</label>
+        <select id="daySelect"></select>
+      </div>
+      <button class="btn btn-ghost" id="genOneBtn">Descargar este día</button>
+      <button class="btn btn-accent" id="genAllBtn">Descargar todos (.zip)</button>
+    </div>
+
+    <div class="preview-area">
+      <canvas id="mainPreview" width="1080" height="1080"></canvas>
+      <div class="thumb-grid" id="thumbGrid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const WEEKDAY_COLORS = {
+  "lunes":"#D64933",
+  "martes":"#E8A93A",
+  "miercoles":"#1F5952",
+  "miércoles":"#1F5952",
+  "jueves":"#7A4B8C",
+  "viernes":"#3E7CB1"
+};
+function normDay(d){
+  return (d||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+}
+function colorForDay(d){
+  const n = normDay(d);
+  return WEEKDAY_COLORS[d.toLowerCase()] || WEEKDAY_COLORS[n] || "#1F5952";
+}
+
+let state = { days: [] }; // {day, date, items:[..]}
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const uploadStatus = document.getElementById('uploadStatus');
+
+dropZone.addEventListener('click', ()=>fileInput.click());
+dropZone.addEventListener('dragover', e=>{e.preventDefault(); dropZone.classList.add('drag');});
+dropZone.addEventListener('dragleave', ()=>dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e=>{
+  e.preventDefault(); dropZone.classList.remove('drag');
+  if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e=>{
+  if(e.target.files[0]) handleFile(e.target.files[0]);
+});
+
+async function handleFile(file){
+  if(file.type !== 'application/pdf'){
+    uploadStatus.textContent = 'Ese archivo no es un PDF.';
+    uploadStatus.className = 'status err';
+    return;
+  }
+  uploadStatus.textContent = 'Leyendo el PDF...';
+  uploadStatus.className = 'status';
+  try{
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+    const days = await extractDaysFromPdf(pdf);
+    if(days.length === 0){
+      uploadStatus.textContent = 'No pude detectar la tabla de días automáticamente. Se abrió vacío para que lo completes a mano.';
+      uploadStatus.className = 'status err';
+    } else {
+      uploadStatus.textContent = `Listo — se detectó el almuerzo de ${days.length} días. Revísalos abajo antes de generar las imágenes.`;
+      uploadStatus.className = 'status ok';
+    }
+    state.days = days;
+    renderTable();
+    document.getElementById('settingsCard').classList.remove('hidden');
+    document.getElementById('tableCard').classList.remove('hidden');
+    document.getElementById('genCard').classList.remove('hidden');
+  }catch(err){
+    console.error(err);
+    uploadStatus.textContent = 'No pude leer ese PDF. Intenta con otro archivo.';
+    uploadStatus.className = 'status err';
+  }
+}
+
+// ---- PDF grid parsing ----
+// This is built for the JUNAEB monthly minuta layout: a 7-column table
+// (Lunes..Domingo), each cell holding "DESAYUNO: ... | ALMUERZO: ... | item | item |".
+// We locate columns by the weekday header x-positions, then split each
+// column's text into per-day cells at the standalone day-number line.
+
+const WEEKDAY_ORDER = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+function normalizeStr(s){
+  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+}
+const WEEKDAY_NORM = WEEKDAY_ORDER.map(normalizeStr);
+
+function capitalize(s){
+  return s ? s.charAt(0).toUpperCase()+s.slice(1).toLowerCase() : s;
+}
+
+async function extractDaysFromPdf(pdf){
+  let allDays = [];
+  let monthLabel = '';
+
+  for(let p=1; p<=pdf.numPages; p++){
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const items = content.items
+      .filter(it=>it.str && it.str.trim())
+      .map(it=>({str: it.str.trim(), x: it.transform[4], y: it.transform[5]}));
+
+    if(!monthLabel){
+      const byY = {};
+      items.forEach(it=>{
+        const key = Math.round(it.y);
+        (byY[key] = byY[key]||[]).push(it);
+      });
+      for(const key in byY){
+        const lineStr = byY[key].sort((a,b)=>a.x-b.x).map(i=>i.str).join(' ');
+        const m = lineStr.match(/([A-Za-zÁÉÍÓÚñÑ]+)\s+(\d{4})/);
+        if(m && MONTHS.includes(normalizeStr(m[1]))){
+          monthLabel = `${capitalize(normalizeStr(m[1]))} ${m[2]}`;
+          break;
+        }
+      }
+    }
+
+    // find the weekday header row, just to know how far down the table body starts
+    const headerItems = items.filter(it => WEEKDAY_NORM.includes(normalizeStr(it.str)));
+    if(headerItems.length < 5) continue; // couldn't find the table on this page
+    const headerY = headerItems.reduce((s,it)=>s+it.y,0) / headerItems.length;
+
+    // exclude the header row and stray footer text (report timestamp, "Colegio:", etc.)
+    const bodyItems = items.filter(it =>
+      it.y < headerY - 3 &&
+      !/^\d{2}[\/\-]\d{2}[\/\-]\d{4}/.test(it.str) &&
+      !/^\d{1,2}:\d{2}(:\d{2})?$/.test(it.str) &&
+      !['colegio','comuna','region'].includes(normalizeStr(it.str).replace(/:$/,''))
+    );
+
+    // Anchor columns using the day-number cells themselves (e.g. the lone "3", "10", "17"
+    // at the top of each day cell). They're consistently left-aligned within their column,
+    // which is far more reliable than the header text position (header labels are centered
+    // in their cell, so their x doesn't line up with the true column edge).
+    const dayNumXs = [...new Set(
+      bodyItems.filter(it => /^\d{1,2}$/.test(it.str)).map(it => Math.round(it.x*10)/10)
+    )].sort((a,b)=>a-b);
+    let clusters = [];
+    dayNumXs.forEach(x=>{
+      if(clusters.length && x - clusters[clusters.length-1].slice(-1)[0] < 20){
+        clusters[clusters.length-1].push(x);
+      } else {
+        clusters.push([x]);
+      }
+    });
+    if(clusters.length < 5) continue; // not enough to anchor columns reliably
+    const colAnchors = clusters.map(c => c.reduce((a,b)=>a+b,0)/c.length); // ascending x, Lunes -> Domingo
+
+    const MARGIN = 6; // px buffer so trailing "|" separators don't bleed into the next column
+    const boundaries = [];
+    for(let i=0;i<colAnchors.length-1;i++) boundaries.push(colAnchors[i+1] - MARGIN);
+    function colIndexForX(x){
+      let pos = 0;
+      while(pos < boundaries.length && x > boundaries[pos]) pos++;
+      return pos; // 0..N-1, matches WEEKDAY_ORDER left to right
+    }
+
+    let byCol = {};
+    for(let i=0;i<colAnchors.length;i++) byCol[i] = [];
+    bodyItems.forEach(it=>{
+      const idx = colIndexForX(it.x);
+      if(byCol[idx]) byCol[idx].push(it);
+    });
+
+    Object.keys(byCol).forEach(colIdxStr=>{
+      const colIdx = Number(colIdxStr);
+      const dayName = WEEKDAY_ORDER[colIdx];
+      if(!dayName) return;
+      const colItems = byCol[colIdx];
+      if(colItems.length === 0) return;
+
+      const lineMap = {};
+      colItems.forEach(it=>{
+        const key = Math.round(it.y/2)*2; // small tolerance to merge same text line
+        (lineMap[key] = lineMap[key]||[]).push(it);
+      });
+      const ys = Object.keys(lineMap).map(Number).sort((a,b)=>b-a); // top -> bottom
+      const lines = ys.map(y => lineMap[y].sort((a,b)=>a.x-b.x).map(i=>i.str).join(' ').trim());
+
+      let cells = [];
+      let current = null;
+      lines.forEach(line=>{
+        if(/^\d{1,2}$/.test(line)){
+          if(current) cells.push(current);
+          current = { dateNum: line, rawLines: [] };
+        } else if(current){
+          current.rawLines.push(line);
+        }
+      });
+      if(current) cells.push(current);
+
+      cells.forEach(cell=>{
+        const menu = extractMenuItems(cell.rawLines.join(' '));
+        allDays.push({
+          day: dayName,
+          dateNum: Number(cell.dateNum),
+          date: monthLabel ? `${cell.dateNum} de ${monthLabel.split(' ')[0]}` : cell.dateNum,
+          breakfast: menu.breakfast,
+          lunch: menu.lunch
+        });
+      });
+    });
+  }
+
+  const weekdaysOnly = allDays.filter(d =>
+    ['Lunes','Martes','Miércoles','Jueves','Viernes'].includes(d.day) && (d.breakfast.length > 0 || d.lunch.length > 0)
+  );
+  weekdaysOnly.sort((a,b)=>a.dateNum - b.dateNum);
+  return weekdaysOnly;
+}
+
+// Cell text looks like: "DESAYUNO: ... | ... | ALMUERZO: AGUA NATURAL | ITEM | ITEM |"
+// We split it into its two sections so both can be shown.
+function extractMenuItems(rawText){
+  const parts = rawText.split('|').map(s=>s.trim()).filter(Boolean);
+  let breakfast = [], lunch = [];
+  let mode = null; // 'breakfast' | 'lunch'
+  parts.forEach(p=>{
+    if(/^DESAYUNO\s*:/i.test(p)){
+      mode = 'breakfast';
+      const val = p.replace(/^DESAYUNO\s*:\s*/i,'').trim();
+      if(val) breakfast.push(val);
+      return;
+    }
+    if(/^ALMUERZO\s*:/i.test(p)){
+      mode = 'lunch';
+      const val = p.replace(/^ALMUERZO\s*:\s*/i,'').trim();
+      if(val) lunch.push(val);
+      return;
+    }
+    if(mode === 'breakfast' && p) breakfast.push(p);
+    if(mode === 'lunch' && p) lunch.push(p);
+  });
+  return { breakfast, lunch };
+}
+
+const daysBody = document.getElementById('daysBody');
+
+function renderTable(){
+  daysBody.innerHTML = '';
+  state.days.forEach((d, idx)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" data-field="day" data-idx="${idx}" value="${escapeHtml(d.day)}"></td>
+      <td><input type="text" data-field="date" data-idx="${idx}" value="${escapeHtml(d.date)}"></td>
+      <td><textarea rows="3" data-field="breakfast" data-idx="${idx}">${escapeHtml((d.breakfast||[]).join('\n'))}</textarea></td>
+      <td><textarea rows="3" data-field="lunch" data-idx="${idx}">${escapeHtml((d.lunch||[]).join('\n'))}</textarea></td>
+      <td class="rm-col"><button class="rm-btn" data-rm="${idx}" title="Eliminar día">✕</button></td>
+    `;
+    daysBody.appendChild(tr);
+  });
+  updateDaySelect();
+  renderThumbs();
+}
+
+function escapeHtml(s){
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+daysBody.addEventListener('input', e=>{
+  const idx = e.target.dataset.idx;
+  const field = e.target.dataset.field;
+  if(idx === undefined) return;
+  if(field === 'breakfast' || field === 'lunch'){
+    state.days[idx][field] = e.target.value.split('\n').map(s=>s.trim()).filter(Boolean);
+  } else {
+    state.days[idx][field] = e.target.value;
+  }
+  updateDaySelect();
+  renderThumbs();
+});
+
+daysBody.addEventListener('click', e=>{
+  if(e.target.dataset.rm !== undefined){
+    const idx = Number(e.target.dataset.rm);
+    state.days.splice(idx,1);
+    renderTable();
+  }
+});
+
+document.getElementById('addRowBtn').addEventListener('click', ()=>{
+  state.days.push({day:'Lunes', date:'', breakfast:[''], lunch:['']});
+  renderTable();
+});
+
+function updateDaySelect(){
+  const sel = document.getElementById('daySelect');
+  const prev = sel.value;
+  sel.innerHTML = '';
+  state.days.forEach((d,idx)=>{
+    const opt = document.createElement('option');
+    opt.value = idx;
+    opt.textContent = `${d.day}${d.date ? ' · '+d.date : ''}`;
+    sel.appendChild(opt);
+  });
+  if(prev && Number(prev) < state.days.length) sel.value = prev;
+}
+
+// ---- Canvas rendering ----
+function drawMenuCard(ctx, d, schoolName, igHandle){
+  const W = 1080, H = 1080;
+  const color = colorForDay(d.day);
+  ctx.clearRect(0,0,W,H);
+
+  // background
+  ctx.fillStyle = '#FBF3E4';
+  ctx.fillRect(0,0,W,H);
+
+  // header block
+  const headerH = 300;
+  ctx.fillStyle = color;
+  ctx.fillRect(0,0,W,headerH);
+
+  // scalloped edge (torn ticket look)
+  const scallopR = 22;
+  const scallopCount = Math.ceil(W/(scallopR*2));
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0, headerH);
+  for(let i=0;i<scallopCount;i++){
+    const cx = i*scallopR*2 + scallopR;
+    ctx.arc(cx, headerH, scallopR, Math.PI, 0, true);
+  }
+  ctx.lineTo(W, 0);
+  ctx.lineTo(0,0);
+  ctx.closePath();
+  ctx.fill();
+
+  // day name
+  ctx.fillStyle = '#FBF3E4';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = '800 108px Arial, Helvetica, sans-serif';
+  ctx.fillText((d.day||'').toUpperCase(), 60, 175);
+
+  // date
+  ctx.font = '600 32px Arial, Helvetica, sans-serif';
+  ctx.globalAlpha = 0.92;
+  ctx.fillText(d.date || '', 64, 225);
+  ctx.globalAlpha = 1;
+
+  // meal sections: desayuno first, then almuerzo, each with its own label
+  const breakfast = (d.breakfast||[]).filter(Boolean);
+  const lunch = (d.lunch||[]).filter(Boolean);
+  const totalItems = breakfast.length + lunch.length;
+  const fontSize = totalItems > 11 ? 24 : totalItems > 9 ? 27 : totalItems > 7 ? 31 : totalItems > 5 ? 36 : 42;
+  const lineGap = fontSize * 1.5;
+  const labelSize = Math.max(22, Math.round(fontSize*0.62));
+  const maxWidth = W - 200;
+  const bulletR = fontSize*0.13;
+
+  let y = headerH + 70;
+
+  function drawSection(label, items){
+    if(items.length === 0) return;
+    ctx.fillStyle = color;
+    ctx.font = `800 ${labelSize}px Arial, Helvetica, sans-serif`;
+    ctx.fillText(label, 60, y);
+    y += labelSize + fontSize*0.55;
+    ctx.font = `500 ${fontSize}px Arial, Helvetica, sans-serif`;
+    items.forEach(item=>{
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(70, y - fontSize*0.35, bulletR, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#26241F';
+      y = wrapText(ctx, item, 100, y, maxWidth - 40, lineGap);
+      y += lineGap*0.3;
+    });
+    y += fontSize*0.65;
+  }
+
+  drawSection('DESAYUNO', breakfast);
+  drawSection('ALMUERZO', lunch);
+
+  // footer
+  ctx.strokeStyle = 'rgba(38,36,31,0.18)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(60, H-110);
+  ctx.lineTo(W-60, H-110);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(38,36,31,0.65)';
+  ctx.font = '700 28px Arial, Helvetica, sans-serif';
+  ctx.fillText(schoolName || '', 60, H-60);
+
+  ctx.textAlign = 'right';
+  ctx.fillText(igHandle || '', W-60, H-60);
+  ctx.textAlign = 'left';
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight){
+  const words = text.split(' ');
+  let line = '';
+  for(let n=0;n<words.length;n++){
+    const testLine = line + words[n] + ' ';
+    if(ctx.measureText(testLine).width > maxWidth && line !== ''){
+      ctx.fillText(line, x, y);
+      line = words[n] + ' ';
+      y += lineHeight;
+    } else {
+      line = testLine;
+    }
+  }
+  ctx.fillText(line, x, y);
+  return y + lineHeight;
+}
+
+function getSettings(){
+  return {
+    schoolName: document.getElementById('schoolName').value,
+    igHandle: document.getElementById('igHandle').value
+  };
+}
+
+function renderMainPreview(idx){
+  const d = state.days[idx];
+  if(!d) return;
+  const canvas = document.getElementById('mainPreview');
+  const ctx = canvas.getContext('2d');
+  const {schoolName, igHandle} = getSettings();
+  drawMenuCard(ctx, d, schoolName, igHandle);
+}
+
+function renderThumbs(){
+  const grid = document.getElementById('thumbGrid');
+  grid.innerHTML = '';
+  const {schoolName, igHandle} = getSettings();
+  state.days.forEach((d, idx)=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'thumb';
+    const c = document.createElement('canvas');
+    c.width = 1080; c.height = 1080;
+    const ctx = c.getContext('2d');
+    drawMenuCard(ctx, d, schoolName, igHandle);
+    wrap.appendChild(c);
+    wrap.addEventListener('click', ()=>{
+      document.getElementById('daySelect').value = idx;
+      renderMainPreview(idx);
+    });
+    grid.appendChild(wrap);
+  });
+  if(state.days.length) renderMainPreview(document.getElementById('daySelect').value || 0);
+}
+
+document.getElementById('daySelect').addEventListener('change', e=>{
+  renderMainPreview(Number(e.target.value));
+});
+document.getElementById('schoolName').addEventListener('input', renderThumbs);
+document.getElementById('igHandle').addEventListener('input', renderThumbs);
+
+document.getElementById('genOneBtn').addEventListener('click', ()=>{
+  const idx = Number(document.getElementById('daySelect').value || 0);
+  const d = state.days[idx];
+  if(!d) return;
+  const canvas = document.getElementById('mainPreview');
+  renderMainPreview(idx);
+  const link = document.createElement('a');
+  link.download = `menu_${slug(d.day)}_${slug(d.date)}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+});
+
+document.getElementById('genAllBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('genAllBtn');
+  btn.disabled = true;
+  const origText = btn.textContent;
+  btn.textContent = 'Generando...';
+  try{
+    const zip = new JSZip();
+    const {schoolName, igHandle} = getSettings();
+    for(let i=0;i<state.days.length;i++){
+      const d = state.days[i];
+      const c = document.createElement('canvas');
+      c.width = 1080; c.height = 1080;
+      const ctx = c.getContext('2d');
+      drawMenuCard(ctx, d, schoolName, igHandle);
+      const dataUrl = c.toDataURL('image/png').split(',')[1];
+      zip.file(`menu_${String(i+1).padStart(2,'0')}_${slug(d.day)}_${slug(d.date)}.png`, dataUrl, {base64:true});
+    }
+    const blob = await zip.generateAsync({type:'blob'});
+    const link = document.createElement('a');
+    link.download = 'menus_semana.zip';
+    link.href = URL.createObjectURL(blob);
+    link.click();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+});
+
+function slug(s){
+  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'dia';
+}
+</script>
+</body>
+</html>
